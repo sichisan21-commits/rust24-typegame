@@ -1,5 +1,5 @@
 use rand::Rng;
-const DEADLINE: f64 = 25.0; // ゲームオーバーの判定ライン（例）
+const DEADLINE: f64 = 27.0; // ゲームオーバーの判定ライン（例）
 
 // １オブジェクト（単語）
 pub struct Keyword {
