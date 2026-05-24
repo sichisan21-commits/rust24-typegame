@@ -1,3 +1,4 @@
+mod keyword;
 mod gamemain;
 mod keymanager;
 use gamemain::GameMain;
