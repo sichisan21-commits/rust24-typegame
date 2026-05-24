@@ -24,6 +24,7 @@ pub struct GameMain  {
     game_msg: String,                       // ゲームメッセージ
     key_manager: KeyManager,                // キー管理オブジェクト
     combo: i32,                              // コンボ数
+    maxcombo: i32,                           // 最大コンボ数
 }
 
 // ゲームの実装
@@ -45,6 +46,7 @@ impl GameMain {
             game_msg: String::from("PRESS 'S' KEY TO START('Q' KEY TO QUIT)"),
             key_manager: KeyManager::new(), // キー管理オブジェクトの初期化
             combo: 0,                        // コンボ数の初期化
+            maxcombo: 0,                     // 最大コンボ数の初期化
         };
         game_main.reset();
         game_main
@@ -60,6 +62,7 @@ impl GameMain {
         self.keywords.clear();                // 単語リストのクリア
         self.lastkey = ' ';                   // 最後に入力されたキー
         self.combo = 0;                       // コンボ数の初期化
+        self.maxcombo = 0;                    // 最大コンボ数の初期化
         println!("\x1B[2J"); // 画面をクリア
     }
 
@@ -122,8 +125,12 @@ impl GameMain {
         }
         // 単語が完成した場合の処理
         if self.keywords[0].progress >= self.keywords[0].text.len(){
+            // コンボ数を増加
+            self.combo += 1;
+            if self.combo > self.maxcombo {
+                self.maxcombo = self.combo; // 最大コンボ数を更新
+            }
             // スコアを増加
-            self.combo += 1; // コンボ数を増加
             self.score += self.keywords[0].text.len() as i32 * (self.combo.min(10) * 10); // コンボ数に応じてスコアを増加
             // 自分の位置を消去して単語をリストから削除
             self.keywords[0].clear();
@@ -190,8 +197,8 @@ impl GameMain {
         print!("\x1B[{};1H\x1B[0;31m{}\x1b[0;37m{}",
             self.deadline as i32 + 2,self.game_msg,
             " ".repeat(120 - self.game_msg.len()));
-        print!("TOTALSCORE: {}{}",
-            (self.score - self.miss * 10).max(0), " ".repeat(50));
+        print!("TOTALSCORE: {}({} MAX COMBO){}",
+            (self.score - self.miss * 10).max(0), self.maxcombo," ".repeat(30));
 
         // コンボ数が5以上の場合は特別な表示    
         let combo_msg = if self.combo >= 10 {
