@@ -1,6 +1,9 @@
 use rand::Rng;
 use crate::keymanager::KeyManager;
-const DEADLINE: f64 = 27.0; // ゲームオーバーの判定ライン（例）
+const GAMEWIDTH: usize = 80;               // ゲーム画面の幅
+const DEADLINE: f64 = 20.0;         // ゲームオーバーの判定ライン
+const DOWNSPEED: f64 = 0.03;        // 単語の落下速度
+const DIFFICULTUP: f64 = 0.003;     // 難易度の上昇値
 
 // １オブジェクト（単語）
 pub struct Keyword {
@@ -23,8 +26,8 @@ pub struct GameMain  {
     deadline: f64,                          // ゲームオーバーの判定ライン
     game_msg: String,                       // ゲームメッセージ
     key_manager: KeyManager,                // キー管理オブジェクト
-    combo: i32,                              // コンボ数
-    maxcombo: i32,                           // 最大コンボ数
+    combo: i32,                             // コンボ数
+    maxcombo: i32,                          // 最大コンボ数
 }
 
 // ゲームの実装
@@ -64,6 +67,9 @@ impl GameMain {
         self.combo = 0;                       // コンボ数の初期化
         self.maxcombo = 0;                    // 最大コンボ数の初期化
         println!("\x1B[2J"); // 画面をクリア
+        // 判定ラインを表示
+        println!("\x1B[{};1H{}", self.deadline as i32 + 1,"-".repeat(GAMEWIDTH));
+
     }
 
     //------------------------------------------------------------------
@@ -76,9 +82,9 @@ impl GameMain {
             // 候補リストからランダムに単語を選択
             text: self.textlist[rng.gen_range(0..self.textlist.len())].clone(),
             // 単語の横位置をランダムに設定
-            xpos: rng.gen_range(0..=100) as f64,
+            xpos: rng.gen_range(0..=GAMEWIDTH - 20) as f64,
             ypos: 2.0,
-            speed: 0.05,
+            speed: DOWNSPEED,
             progress: 0,
         });
     }
@@ -110,7 +116,22 @@ impl GameMain {
         // 一旦単語数がdifficult未満なら新しい単語を生成する
         //------------------------------
         if self.keywords.len() < self.difficult as usize {
-            self.create_keyword();
+            // 直前の単語とX座標が被らないように生成する
+            if self.keywords.is_empty() {
+                // 単語がなければ無条件に生成
+                self.create_keyword();
+            } else {
+                // 単語がある場合は、直前の単語とX座標が被らないように生成
+                loop {
+                    self.create_keyword();
+                    let prev = &self.keywords[self.keywords.len() - 2];
+                    let last = self.keywords.last().unwrap();
+                    if (last.xpos - prev.xpos).abs() > 10.0 {
+                        break;
+                    }
+                    self.keywords.pop();
+                }
+            }
         }
 
         //------------------------------
@@ -162,7 +183,7 @@ impl GameMain {
             }
         }
         self.game_message(format!("WORD COUNT: {}", self.keywords.len()));
-        self.set_difficult(0.003); // 難易度を徐々に上げる
+        self.set_difficult(DIFFICULTUP); // 難易度を徐々に上げる
         // ゲームループの実装
     }
 
@@ -174,9 +195,16 @@ impl GameMain {
         println!("\x1B[1;1HDifficult: {:.2}  Combo: {}(*10), Miss: {}(*-10)",
             self.difficult, self.combo, self.miss);
 
-        // 判定ラインを表示
-        let line = "-".repeat(120); // 判定ラインの文字列を生成
-        println!("\x1B[{};1H{}", self.deadline as i32 + 1,line);
+        // コンボ数が5以上の場合は特別な表示    
+        let combo_msg = if self.combo >= 10 {
+            format!("\x1B[0;36m【{} COMBO!!(MAX) 】", self.combo.min(10))
+        }else if self.combo >= 5 {
+            format!("\x1B[0;35m【{} COMBO 】", self.combo.min(10))
+        } else {
+            format!("{}", " ".repeat(30))
+        };
+        print!("\x1B[{};40H{}\x1b[0;37m", (self.deadline) as i32 / 2,combo_msg);
+
 
         // 単語群を表示
         for (num,keyword) in self.keywords.iter().enumerate().rev() {
@@ -194,21 +222,10 @@ impl GameMain {
         }
 
         // ゲームメッセージの表示
-        print!("\x1B[{};1H\x1B[0;31m{}\x1b[0;37m{}",
-            self.deadline as i32 + 2,self.game_msg,
-            " ".repeat(120 - self.game_msg.len()));
+        println!("\x1B[{};1H\x1B[0;31m{}\x1b[0;37m",
+            self.deadline as i32 + 2,self.game_msg);
         print!("TOTALSCORE: {}({} MAX COMBO){}",
             (self.score - self.miss * 10).max(0), self.maxcombo," ".repeat(30));
-
-        // コンボ数が5以上の場合は特別な表示    
-        let combo_msg = if self.combo >= 10 {
-            format!("\x1B[0;36m【{} COMBO!!(MAX) 】", self.combo.min(10))
-        }else if self.combo >= 5 {
-            format!("\x1B[0;35m【{} COMBO 】", self.combo.min(10))
-        } else {
-            format!("{}", " ".repeat(30))
-        };
-        print!("\x1B[{};90H{}\x1b[0;37m", (self.deadline + 2.0) as i32,combo_msg);
 
     }
 
