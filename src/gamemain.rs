@@ -81,19 +81,6 @@ impl GameMain {
     }
 
     //------------------------------------------------------------------
-    // 単語に対するキー入力の処理
-    //------------------------------------------------------------------
-    pub fn key_input_one(keyword : &mut Keyword, char: char) -> bool{
-        // 一致しない場合は処理しない
-        if char.to_ascii_lowercase() != keyword.text.chars().nth(keyword.progress).unwrap() {
-            return false;
-        }
-        // 一致する場合はタイプ済み文字数を増加
-        keyword.progress += 1;
-        true
-    }
-
-    //------------------------------------------------------------------
     // ゲームの更新（単語の位置を更新、ゲームオーバー判定など）
     //------------------------------------------------------------------
     pub fn update(&mut self) {
@@ -127,8 +114,7 @@ impl GameMain {
         // 最初のキーワードに対してキー入力の処理を行う
         //------------------------------
         // 入力キーが単語の次の文字と一致するか判定
-        let _is_match = Self::key_input_one(
-            &mut self.keywords[0], self.lastkey);
+        let _is_match = self.keywords[0].key_input_one(self.lastkey);
         // 一致しない場合
         if !_is_match && self.lastkey != ' ' {
             self.miss += 1;
@@ -206,6 +192,17 @@ impl GameMain {
             " ".repeat(120 - self.game_msg.len()));
         print!("TOTALSCORE: {}{}",
             (self.score - self.miss * 10).max(0), " ".repeat(50));
+
+        // コンボ数が5以上の場合は特別な表示    
+        let combo_msg = if self.combo >= 10 {
+            format!("\x1B[0;36m【{} COMBO!!(MAX) 】", self.combo.min(10))
+        }else if self.combo >= 5 {
+            format!("\x1B[0;35m【{} COMBO 】", self.combo.min(10))
+        } else {
+            format!("{}", " ".repeat(30))
+        };
+        print!("\x1B[{};90H{}\x1b[0;37m", (self.deadline + 2.0) as i32,combo_msg);
+
     }
 
     //------------------------------------------------------------------
@@ -246,4 +243,15 @@ impl Keyword {
     fn clear(&self) {
         println!("\x1B[{};{}H{}", self.ypos as i32, self.xpos as i32, " ".repeat(self.text.len()));
     }
+
+    fn key_input_one(&mut self, char: char) -> bool{
+        // 一致しない場合は処理しない
+        if char.to_ascii_lowercase() != self.text.chars().nth(self.progress).unwrap() {
+            return false;
+        }
+        // 一致する場合はタイプ済み文字数を増加
+        self.progress += 1;
+        true
+    }
+
 }
