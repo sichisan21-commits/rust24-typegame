@@ -172,7 +172,7 @@ impl GameMain {
     pub fn draw(&self) {
         // スコアと難易度の表示
         println!("\x1B[1;1HDifficult: {:.2}  Combo: {}(*10), Miss: {}(*-10)",
-            self.difficult, self.combo.min(10), self.miss);
+            self.difficult, self.combo, self.miss);
 
         // 判定ラインを表示
         let line = "-".repeat(120); // 判定ラインの文字列を生成
