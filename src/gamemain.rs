@@ -1,4 +1,5 @@
 use rand::Rng;
+use crate::keymanager::KeyManager;
 const DEADLINE: f64 = 27.0; // ゲームオーバーの判定ライン（例）
 
 // １オブジェクト（単語）
@@ -17,10 +18,12 @@ pub struct GameMain  {
     score: i32,                             // プレイヤーのスコア
     miss: i32,                              // ミス数
     difficult: f64,                         // ゲームの難易度（時間経過で増加）
-    keywords: Vec<Keyword>,                  // 現在の単語リスト
+    keywords: Vec<Keyword>,                 // 現在の単語リスト
     lastkey: char,                          // 最後に入力されたキー
     deadline: f64,                          // ゲームオーバーの判定ライン
-    debug: String,                          // デバッグ用文字列
+    game_msg: String,                       // ゲームメッセージ
+    key_manager: KeyManager,                // キー管理オブジェクト
+    combo: i32,                              // コンボ数
 }
 
 // ゲームの実装
@@ -29,7 +32,7 @@ impl GameMain {
     // ゲームの初期化
     //------------------------------------------------------------------
     pub fn new(textlist: Vec<String>) -> GameMain {
-        GameMain {
+        let mut game_main = GameMain {
             status: 0,                      // 待機状態
             textlist,                       // 単語の候補リストを初期化  
             score: 0,                       // スコアの初期化
@@ -38,8 +41,26 @@ impl GameMain {
             keywords: Vec::new(),           // 単語リストの初期化
             lastkey: ' ',                   // 最後に入力されたキー
             deadline: DEADLINE,             // ゲームオーバーの判定ライン
-            debug: String::new(),           // デバッグ用文字列
-        }
+                                            // ゲームメッセージ初期化
+            game_msg: String::from("PRESS 'S' KEY TO START('Q' KEY TO QUIT)"),
+            key_manager: KeyManager::new(), // キー管理オブジェクトの初期化
+            combo: 0,                        // コンボ数の初期化
+        };
+        game_main.reset();
+        game_main
+    }
+
+    //------------------------------------------------------------------
+    // ゲームの初期化
+    //------------------------------------------------------------------
+    pub fn reset(&mut self) {
+        self.score = 0;                       // スコアの初期化
+        self.miss = 0;                        // ミス数の初期化
+        self.difficult = 1.00;                // 難易度の初期化
+        self.keywords.clear();                // 単語リストのクリア
+        self.lastkey = ' ';                   // 最後に入力されたキー
+        self.combo = 0;                       // コンボ数の初期化
+        println!("\x1B[2J"); // 画面をクリア
     }
 
     //------------------------------------------------------------------
@@ -60,18 +81,11 @@ impl GameMain {
     }
 
     //------------------------------------------------------------------
-    // キー入力の処理
-    //------------------------------------------------------------------
-    pub fn key_input(&mut self, char: char) {
-        self.lastkey = char; // 最後に入力されたキーを更新
-    }
-
-    //------------------------------------------------------------------
     // 単語に対するキー入力の処理
     //------------------------------------------------------------------
     pub fn key_input_one(keyword : &mut Keyword, char: char) -> bool{
         // 一致しない場合は処理しない
-        if char != keyword.text.chars().nth(keyword.progress).unwrap() {
+        if char.to_ascii_lowercase() != keyword.text.chars().nth(keyword.progress).unwrap() {
             return false;
         }
         // 一致する場合はタイプ済み文字数を増加
@@ -83,32 +97,57 @@ impl GameMain {
     // ゲームの更新（単語の位置を更新、ゲームオーバー判定など）
     //------------------------------------------------------------------
     pub fn update(&mut self) {
-        // 落下している単語がある場合は、最後に入力されたキーに対して判定を行う
-        if self.keywords.len() > 0 {
-            // 入力キーに対して判定
-            let _is_match = Self::key_input_one(&mut self.keywords[0], self.lastkey);
-            if !_is_match && self.lastkey != ' ' {
-                // ミス数を増加
-                self.miss += 1;
-            }
-            // 単語が完成した場合の処理
-            if self.keywords[0].progress >= self.keywords[0].text.len(){
-                // スコアを増加
-                self.score += self.keywords[0].text.len() as i32;
-                // 単語をリストから削除
-                self.keywords[0].clear();
-                self.keywords.remove(0);
-            }
+        //------------------------------
+        // キー入力判定
+        //------------------------------
+        // 'Q'キーが入力されたらゲーム終了
+        if self.lastkey == 'Q' {
+            self.status = 3;
+            return
         }
-        // 最後に入力されたキーをリセット
-        self.lastkey = ' ';
+        // ゲーム待機状態でキーが入力されたらゲーム開始
+        if self.status == 0 || self.status == 2 {
+            // ゲーム開始前に'S'キーが押されていなかったらゲーム開始しない
+            if self.lastkey != 'S' {
+                return
+            }
+            self.status = 1; // ゲーム開始状態に変更
+            self.game_msg = String::from(""); // ゲームメッセージをクリア
+            self.reset(); // ゲームの初期化
+        }
 
+        //------------------------------
         // 一旦単語数がdifficult未満なら新しい単語を生成する
+        //------------------------------
         if self.keywords.len() < self.difficult as usize {
             self.create_keyword();
         }
 
-        // ここで単語の位置を更新し、ゲームオーバー判定
+        //------------------------------
+        // 最初のキーワードに対してキー入力の処理を行う
+        //------------------------------
+        // 入力キーが単語の次の文字と一致するか判定
+        let _is_match = Self::key_input_one(
+            &mut self.keywords[0], self.lastkey);
+        // 一致しない場合
+        if !_is_match && self.lastkey != ' ' {
+            self.miss += 1;
+            self.combo = 0; // コンボ数をリセット
+        }
+        // 単語が完成した場合の処理
+        if self.keywords[0].progress >= self.keywords[0].text.len(){
+            // スコアを増加
+            self.combo += 1; // コンボ数を増加
+            self.score += self.keywords[0].text.len() as i32 * (self.combo.min(10) * 10); // コンボ数に応じてスコアを増加
+            // 自分の位置を消去して単語をリストから削除
+            self.keywords[0].clear();
+            self.keywords.remove(0);
+        }
+        self.lastkey = ' ';
+
+        //------------------------------
+        // キーワードの位置を更新
+        //------------------------------
         for keyword in &mut self.keywords {
 
             // 単語の新しい位置を計算
@@ -125,8 +164,13 @@ impl GameMain {
             // ゲームオーバー判定
             if keyword.ypos as i32 > self.deadline as i32 {
                 self.status = 2; // ゲームオーバー状態に変更
+                self.game_message(format!("GAME OVER!! PRESS 'S' KEY TO RESTART('Q' KEY TO QUIT)"));
+                return;
             }
         }
+        self.game_message(format!("WORD COUNT: {}", self.keywords.len()));
+        self.set_difficult(0.003); // 難易度を徐々に上げる
+        // ゲームループの実装
     }
 
     //------------------------------------------------------------------
@@ -134,8 +178,8 @@ impl GameMain {
     //------------------------------------------------------------------
     pub fn draw(&self) {
         // スコアと難易度の表示
-        println!("\x1B[1;1HScore: {}  Difficult: {:.2}  Miss: {}",
-                self.score, self.difficult, self.miss);
+        println!("\x1B[1;1HDifficult: {:.2}  Combo: {}(*10), Miss: {}(*-10)",
+            self.difficult, self.combo.min(10), self.miss);
 
         // 判定ラインを表示
         let line = "-".repeat(120); // 判定ラインの文字列を生成
@@ -146,16 +190,22 @@ impl GameMain {
             if num == 0 {
                 let front: String = keyword.text.chars().take(keyword.progress).collect();// タイプ済み部分
                 let back:  String = keyword.text.chars().skip(keyword.progress).collect();// タイプしていない部分
-                println!("\x1B[{};{}H\x1B[0;32m{}\x1B[0;37m{}",
+                let front = front.to_uppercase();
+                let back = back.to_uppercase();
+                println!("\x1B[{};{}H\x1B[0;32m{}\x1B[0;33m{}",
                     keyword.ypos as i32, keyword.xpos as i32, front, back);
             } else{
                 println!("\x1B[{};{}H\x1B[0;90m{}",
-                    keyword.ypos as i32, keyword.xpos as i32, keyword.text);
+                    keyword.ypos as i32, keyword.xpos as i32, keyword.text.to_uppercase());
             }   
         }
 
-        // デバッグ情報を表示
-        println!("\x1B[{};1H{}", self.deadline as i32 + 2,self.debug);
+        // ゲームメッセージの表示
+        print!("\x1B[{};1H\x1B[0;31m{}\x1b[0;37m{}",
+            self.deadline as i32 + 2,self.game_msg,
+            " ".repeat(120 - self.game_msg.len()));
+        print!("TOTALSCORE: {}{}",
+            (self.score - self.miss * 10).max(0), " ".repeat(50));
     }
 
     //------------------------------------------------------------------
@@ -164,21 +214,33 @@ impl GameMain {
     pub fn set_difficult(&mut self, difficult: f64) {
         self.difficult += difficult;
     }
-    
-    //------------------------------------------------------------------
-    // ゲームの状態を取得
-    //------------------------------------------------------------------
-    pub fn get_status(&self) -> i32 {
-        self.status
-    }
 
     //------------------------------------------------------------------
-    // デバッグ表示
+    // ゲームメッセージ
     //------------------------------------------------------------------
-    pub fn debug_print(&mut self, text: String) {
-        self.debug = text;
+    pub fn game_message(&mut self, text: String) {
+        self.game_msg = text;
     }
-}   
+
+    //------------------------------------------------- -----------------
+    // ゲームループ
+    //------------------------------------------------------------------
+    pub fn run(&mut self) {
+        while self.status != 3 { // ゲーム終了になるまでループ
+            // キー入力チェック
+            self.lastkey =  self.key_manager.get_key(); // キー入力の取得
+ 
+            // ゲームの更新
+            self.update();
+
+            // ここでゲームの描画処理を実装（例: 単語の位置を表示）
+            self.draw();
+
+            // 処理を遅延させる（例: 100msごとに更新）
+            std::thread::sleep(std::time::Duration::from_millis(30));
+        }
+    }   
+}
 
 impl Keyword {
     fn clear(&self) {

@@ -1,7 +1,6 @@
 mod gamemain;
-use gamemain::GameMain;
 mod keymanager;
-use keymanager::KeyManager;
+use gamemain::GameMain;
 
 //------------------------------------------------------------------
 // メイン関数
@@ -23,31 +22,15 @@ fn main() {
         "end", "pause", "resume", "quit", "restart", "menu", "option", "setting", "help",
         "about", "contact", "support", "feedback", "update", "download",]
         .into_iter()
-        .map(|s| s.to_string())
+        .map(|word| word.to_string())
         .collect::<Vec<String>>();
-
-    // キー管理の生成
-    let mut key_manager = KeyManager::new();
 
     // ゲームの生成
     let mut game_main = GameMain::new(textlist); // ゲームの初期化
-    println!("\x1B[2J"); // 画面をクリア
 
     // ゲームループ
-    while game_main.get_status() != 2 { // ゲームオーバーになるまでループ
-        // キー入力チェック
-        let _key =  key_manager.get_key(); // キー入力の取得
-        game_main.key_input(_key);
-        game_main.debug_print(format!("Input key: {}", _key));
- 
-        // ゲームの更新
-        game_main.update();
+    print!("\x1B[?25l");
+    game_main.run(); // ゲームの更新と描画を行う
+    print!("\x1B[?25h");
 
-        // ここでゲームの描画処理を実装（例: 単語の位置を表示）
-        game_main.draw();
-
-        // 処理を遅延させる（例: 100msごとに更新）
-        std::thread::sleep(std::time::Duration::from_millis(30));
-        game_main.set_difficult(0.003); // 難易度を徐々に上げる
-    }
 }
