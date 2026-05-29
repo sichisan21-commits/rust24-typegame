@@ -8,6 +8,14 @@ const DEADLINE: f64 = 20.0;                 // ゲームオーバーの判定ラ
 const DOWNSPEED: f64 = 0.03;                // 単語の落下速度
 const DIFFICULTUP: f64 = 0.003;             // 難易度の上昇値
 
+// コンボ・ミス表示用
+struct CenterMsg {
+    text: String,
+    view_frame: i32,
+    baseposx: i32,
+    baseposy: i32,    
+}
+
 // ゲームの管理データ
 pub struct GameMain  {
     status: i32,                            // ゲームの状態（0:待機,1:ゲーム中,2:ゲームオーバー）
@@ -18,10 +26,11 @@ pub struct GameMain  {
     keywords: VecDeque<Keyword>,            // 現在の単語リスト
     lastkey: char,                          // 最後に入力されたキー
     deadline: f64,                          // ゲームオーバーの判定ライン
-    game_msg: String,                       // ゲームメッセージ
     key_manager: KeyManager,                // キー管理オブジェクト
     combo: i32,                             // コンボ数
     maxcombo: i32,                          // 最大コンボ数
+    game_msg: String,                       // ゲームメッセージ
+    center_msg: CenterMsg,                  // 中央に表示するメッセージ
 }
 
 // ゲームの実装
@@ -40,10 +49,16 @@ impl GameMain {
             lastkey: ' ',                   // 最後に入力されたキー
             deadline: DEADLINE,             // ゲームオーバーの判定ライン
                                             // ゲームメッセージ初期化
-            game_msg: String::from("PRESS 'S' KEY TO START('Q' KEY TO QUIT)"),
             key_manager: KeyManager::new(), // キー管理オブジェクトの初期化
             combo: 0,                        // コンボ数の初期化
             maxcombo: 0,                     // 最大コンボ数の初期化
+            game_msg: String::from("PRESS 'S' KEY TO START('Q' KEY TO QUIT)"),
+            center_msg: CenterMsg {
+                text: String::from(""),
+                view_frame: 0,
+                baseposx: GAMEWIDTH as i32 / 2,
+                baseposy: DEADLINE as i32 / 2
+             }
         };
         game_main.reset();
         game_main
@@ -53,17 +68,19 @@ impl GameMain {
     // ゲームの初期化
     //------------------------------------------------------------------
     pub fn reset(&mut self) {
-        self.score = 0;                       // スコアの初期化
-        self.miss = 0;                        // ミス数の初期化
-        self.difficult = 1.00;                // 難易度の初期化
-        self.keywords.clear();                // 単語リストのクリア
-        self.lastkey = ' ';                   // 最後に入力されたキー
-        self.combo = 0;                       // コンボ数の初期化
-        self.maxcombo = 0;                    // 最大コンボ数の初期化
+        self.score = 0;                     // スコアの初期化
+        self.miss = 0;                      // ミス数の初期化
+        self.difficult = 1.00;              // 難易度の初期化
+        self.keywords.clear();              // 単語リストのクリア
+        self.lastkey = ' ';                 // 最後に入力されたキー
+        self.combo = 0;                     // コンボ数の初期化
+        self.maxcombo = 0;                  // 最大コンボ数の初期化
+        self.center_msg.text.clear();         // コンボ表示クリア
+        self.center_msg.view_frame = 0;     // 表示時間初期化
+
         println!("\x1B[2J"); // 画面をクリア
         // 判定ラインを表示
         println!("\x1B[{};1H{}", self.deadline as i32 + 1,"-".repeat(GAMEWIDTH));
-
     }
 
     //------------------------------------------------------------------
@@ -139,6 +156,9 @@ impl GameMain {
         if !_is_match && self.lastkey != ' ' {
             self.miss += 1;
             self.combo = 0; // コンボ数をリセット
+            self.cls_center_msg();
+            self.center_msg.text = format!("\x1B[0;31mMISS!!\x1B[0;37m");
+            self.center_msg.view_frame = 10;
         }
         // 単語が完成した場合の処理
         if self.keywords[0].is_complete() {
@@ -154,6 +174,17 @@ impl GameMain {
             self.keywords.pop_front();
         }
         self.lastkey = ' ';
+
+        // コンボ数が5以上の場合は特別な表示
+        if self.combo >= 10 {
+            self.center_msg.text =
+                format!("\x1B[0;36m【{} COMBO!!(MAX) 】\x1B[0;37m", self.combo.min(10));
+            self.center_msg.view_frame = -1;
+        } else if self.combo >= 5 {
+            self.center_msg.text =
+                format!("\x1B[0;35m【{} COMBO 】\x1B[0;37m", self.combo);
+            self.center_msg.view_frame = -1;
+        }
 
         //------------------------------
         // キーワードの位置を更新
@@ -179,20 +210,12 @@ impl GameMain {
     //------------------------------------------------------------------
     // ゲームの描画（単語の位置を表示、判定ラインの表示など）
     //------------------------------------------------------------------
-    pub fn draw(&self) {
+    pub fn draw(&mut self) {
         // スコアと難易度の表示
         println!("\x1B[1;1HDifficult: {:.2}  Combo: {}(*10), Miss: {}(*-10)",
             self.difficult, self.combo, self.miss);
 
-        // コンボ数が5以上の場合は特別な表示    
-        let combo_msg = if self.combo >= 10 {
-            format!("\x1B[0;36m【{} COMBO!!(MAX) 】", self.combo.min(10))
-        }else if self.combo >= 5 {
-            format!("\x1B[0;35m【{} COMBO 】", self.combo.min(10))
-        } else {
-            format!("{}", " ".repeat(30))
-        };
-        print!("\x1B[{};40H{}\x1b[0;37m", (self.deadline) as i32 / 2,combo_msg);
+        self.view_center_msg();
 
         // 単語群を表示
         for (num,keyword) in self.keywords.iter().enumerate().rev() {
@@ -208,7 +231,6 @@ impl GameMain {
             self.deadline as i32 + 2,self.game_msg);
         print!("TOTALSCORE: {}({} MAX COMBO){}",
             (self.score - self.miss * 10).max(0), self.maxcombo," ".repeat(30));
-
     }
 
     //------------------------------------------------------------------
@@ -243,4 +265,41 @@ impl GameMain {
             std::thread::sleep(std::time::Duration::from_millis(30));
         }
     }   
+
+    //------------------------------------------------- -----------------
+    // 中央に「ミス」や「コンボ」を表示する
+    //------------------------------------------------------------------
+    fn view_center_msg(&mut self) {
+        // 表示文字が何も設定されていないなら終了
+        if self.center_msg.text == "" {
+            return;
+        }
+
+        // 表示X位置を求める
+        println!("\x1B[{};{}H{}", self.center_msg.baseposy, self.center_msg.baseposx, self.center_msg.text);
+
+        // 時間制限なし表示の場合終了
+        if self.center_msg.view_frame == -1 {
+            return;
+        }
+
+        // 表示時間を１フレーム減らす
+        self.center_msg.view_frame -= 1;
+        if self.center_msg.view_frame > 0 {
+            return;
+        }
+
+        // 表示時間が０に達したら表示位置をクリアする
+        self.cls_center_msg();
+        self.center_msg.text.clear();
+        self.center_msg.view_frame = 0;
+    }
+
+    //------------------------------------------------- -----------------
+    // 中央に「ミス」や「コンボ」を表示する
+    //------------------------------------------------------------------
+    fn cls_center_msg(&mut self) {
+        // 表示X位置を求める
+        println!("\x1B[{};{}H{}", self.center_msg.baseposy, self.center_msg.baseposx, " ".repeat(self.center_msg.text.len()));
+    }
 }
